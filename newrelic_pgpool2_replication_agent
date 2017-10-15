@@ -24,15 +24,16 @@ module NewRelicPgpool2
       dbs = {}
       servers.each do |server|
         report_metric "Server/Name/#{server['name']}", 'Name', server['name']
-        dbs[server['name']] = Pgpool2.new(host: server['host'], port: server['port'], user: server['user'], pass: server['password'], server_name: server['name'])
+        dbs[server['name']] = Pgpool2.new(host: server['host'], port: server['port'], user: server['user'], pass: server['password'], server_name: server['name'], db: server['db'])
       end
-      dbs.each do |pgpool2|
-        pgpool2.get_active_frontend_connections_count.each do |data|
-          report_metric "Connections/Frontend/#{pgpool2.name}", 'Count', data.to_i
+      dbs.each do |name, pgpool2|
+        report_metric "Connections/Frontends/#{name}", 'Count', pgpool2.get_active_frontend_connections_count.to_i
+        pgpool2.get_active_backend_connections_count_by_nodes.each do |backend_hash|
+          report_metric "Connections/Backends/#{name}/#{backend_hash.keys.first}", 'Count', backend_hash.values.first.to_i
         end
       end
 
-      dbs.each do |pgpool2|
+      dbs.each do |_, pgpool2|
         pgpool2.close_connection
       end
     end
@@ -41,17 +42,17 @@ module NewRelicPgpool2
   class Pgpool2
     attr_reader :name
 
-    def initialize(host:, port:, user:, pass:, server_name:)
-      @db = Sequel.connect("postgres://#{user}:#{pass}@#{host}:#{port}/postgres")
+    def initialize(host:, port:, user:, pass:, server_name:, db:)
+      @db = Sequel.connect("postgres://#{user}:#{pass}@#{host}:#{port}/#{db}")
       @name = server_name
     end
 
     def get_active_frontend_connections_count
-      pool_pools.select{|res| res["pool_connected"].to_i == 1}.uniq{|res| res["pool_pid"]}.count
+      pool_pools.select{|res| res[:pool_connected].to_i == 1}.uniq{|res| res[:pool_pid]}.count
     end
 
-    def get_active_backend_connections_count
-      0
+    def get_active_backend_connections_count_by_nodes
+      pool_pools.select{|res| res[:pool_connected].to_i == 1}.group_by{|res| res[:backend_id]}.map{|k,v| {"#{@name}_node_#{k}" => v.size}}
     end
 
     def close_connection
@@ -61,11 +62,7 @@ module NewRelicPgpool2
     private
 
     def pool_pools
-      @pool_pools ||= @db[pool_pools_query].to_a
-    end
-
-    def pool_pools_query
-      "show pool_pools"
+      @pool_pools ||= @db["show pool_pools"].to_a
     end
   end
 
