@@ -52,7 +52,7 @@ module NewRelicPgpool2
     end
 
     def get_active_backend_connections_count_by_nodes
-      pool_pools.select{|res| res[:pool_connected].to_i == 1}.group_by{|res| res[:backend_id]}.map{|k,v| {"#{@name}_node_#{k}" => v.size}}
+      pool_pools.select{|res| res[:pool_backendpid].to_i != 0}.group_by{|res| res[:backend_id]}.map{|k,v| {"#{@name}_node_#{k}" => v.size}}
     end
 
     def close_connection
