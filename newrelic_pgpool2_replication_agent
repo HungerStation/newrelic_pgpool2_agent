@@ -1,0 +1,75 @@
+#!/usr/bin/env ruby
+
+require 'rubygems'
+require 'bundler/setup'
+require 'newrelic_plugin'
+require 'pg'
+require 'sequel'
+
+module NewRelicPgpool2
+  VERSION = '1.0.1'
+
+  class Agent < NewRelic::Plugin::Agent::Base
+
+    agent_guid 'com.hungerstation.newrelic-pgpool2-agent'
+    agent_config_options :name, :servers
+    agent_version NewRelicPgpool2::VERSION
+    agent_human_labels('Pgpool2') { name }
+
+    attr_reader :ident
+
+    def setup_metrics; end
+
+    def poll_cycle
+      dbs = {}
+      servers.each do |server|
+        report_metric "Server/Name/#{server['name']}", 'Name', server['name']
+        dbs[server['name']] = Pgpool2.new(host: server['host'], port: server['port'], user: server['user'], pass: server['password'], server_name: server['name'])
+      end
+      dbs.each do |pgpool2|
+        pgpool2.get_active_frontend_connections_count.each do |data|
+          report_metric "Connections/Frontend/#{pgpool2.name}", 'Count', data.to_i
+        end
+      end
+
+      dbs.each do |pgpool2|
+        pgpool2.close_connection
+      end
+    end
+  end
+
+  class Pgpool2
+    attr_reader :name
+
+    def initialize(host:, port:, user:, pass:, server_name:)
+      @db = Sequel.connect("postgres://#{user}:#{pass}@#{host}:#{port}/postgres")
+      @name = server_name
+    end
+
+    def get_active_frontend_connections_count
+      pool_pools.select{|res| res["pool_connected"].to_i == 1}.uniq{|res| res["pool_pid"]}.count
+    end
+
+    def get_active_backend_connections_count
+      0
+    end
+
+    def close_connection
+      @db.disconnect
+    end
+
+    private
+
+    def pool_pools
+      @pool_pools ||= @db[pool_pools_query].to_a
+    end
+
+    def pool_pools_query
+      "show pool_pools"
+    end
+  end
+
+  NewRelic::Plugin::Config.config_file = File.dirname(__FILE__) + '/config/newrelic_plugin.yml'
+  NewRelic::Plugin::Setup.install_agent :dbs, self
+  NewRelic::Plugin::Run.setup_and_run
+end
