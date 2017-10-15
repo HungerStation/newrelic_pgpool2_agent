@@ -7,11 +7,11 @@ require 'pg'
 require 'sequel'
 
 module NewRelicPgpool2
-  VERSION = '1.0.1'
+  VERSION = '1.1.1'
 
   class Agent < NewRelic::Plugin::Agent::Base
 
-    agent_guid 'com.hungerstation.newrelic-pgpool2-agent'
+    agent_guid 'com.hungerstation.newrelic-pgpool-agent'
     agent_config_options :name, :servers
     agent_version NewRelicPgpool2::VERSION
     agent_human_labels('Pgpool2') { name }
