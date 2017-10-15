@@ -24,11 +24,13 @@ agents:
     name: 'PostgresqlPgpool2Plug-in'
     servers:
       - name: 'pgpool_1'
+        db:   ''
         host: ''
         port: ''
         user: ''
         password: ''
       - name: 'pgpool_2'
+        db:   ''
         host: ''
         port: ''
         user: ''
